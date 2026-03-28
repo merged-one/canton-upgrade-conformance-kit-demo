@@ -40,13 +40,19 @@ class ReportWriterSpec extends AnyFlatSpec with Matchers {
   )
 
   private val invariantResults = List(
-    InvariantResult("INV-001", "all reachable", "all_endpoints_reachable", passed = true, Some("All 1 required endpoints reachable"))
+    InvariantResult(
+      "INV-001",
+      "all reachable",
+      "all_endpoints_reachable",
+      passed = true,
+      Some("All 1 required endpoints reachable")
+    )
   )
 
   private val report = ConformanceReport(scenario, results, invariantResults)
 
   "ReportWriter" should "write a valid JSON report" in {
-    val tmpDir = Files.createTempDirectory("conformance-test")
+    val tmpDir   = Files.createTempDirectory("conformance-test")
     val jsonPath = tmpDir.resolve("report.json")
 
     ReportWriter.writeJson(report, jsonPath)

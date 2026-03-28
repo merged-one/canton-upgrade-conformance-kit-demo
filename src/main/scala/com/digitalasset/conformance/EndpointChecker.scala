@@ -7,10 +7,10 @@ import scala.util.{Try, Success, Failure}
 
 /** Checks endpoint reachability and readiness with retry logic. */
 class EndpointChecker(
-  timeoutSeconds: Int = 30,
-  maxRetries: Int = 5,
-  retryDelaySeconds: Int = 3,
-  verbose: Boolean = false
+    timeoutSeconds: Int = 30,
+    maxRetries: Int = 5,
+    retryDelaySeconds: Int = 3,
+    verbose: Boolean = false
 ) {
 
   private val backend = HttpClientSyncBackend()
@@ -20,7 +20,7 @@ class EndpointChecker(
 
   def check(spec: EndpointSpec): EndpointResult = {
     var lastResult: EndpointResult = null
-    var attempt = 0
+    var attempt                    = 0
 
     while (attempt < maxRetries) {
       attempt += 1
@@ -32,8 +32,10 @@ class EndpointChecker(
 
       if (lastResult.reachable && lastResult.statusMatch) {
         val symbol = "\u2713"
-        println(s"  [$symbol] ${spec.name}: ${lastResult.statusCode.getOrElse("?")} " +
-          s"(${lastResult.responseTimeMs}ms, attempt $attempt)")
+        println(
+          s"  [$symbol] ${spec.name}: ${lastResult.statusCode.getOrElse("?")} " +
+            s"(${lastResult.responseTimeMs}ms, attempt $attempt)"
+        )
         return lastResult
       }
 
@@ -51,7 +53,7 @@ class EndpointChecker(
   }
 
   private def singleCheck(spec: EndpointSpec, attempt: Int): EndpointResult = {
-    val start = System.currentTimeMillis()
+    val start     = System.currentTimeMillis()
     val timestamp = Instant.now()
 
     Try {
@@ -61,7 +63,7 @@ class EndpointChecker(
         .response(asStringAlways)
 
       val response = request.send(backend)
-      val elapsed = System.currentTimeMillis() - start
+      val elapsed  = System.currentTimeMillis() - start
 
       EndpointResult(
         name = spec.name,

@@ -5,6 +5,7 @@ import io.circe.syntax._
 import io.circe.generic.semiauto._
 import java.nio.file.{Files, Path}
 import java.time.Instant
+import scala.annotation.nowarn
 
 /** Writes conformance reports in JSON and Markdown formats. */
 object ReportWriter {
@@ -13,32 +14,34 @@ object ReportWriter {
   implicit val instantEncoder: Encoder[Instant] =
     Encoder.encodeString.contramap(_.toString)
 
+  @nowarn("msg=adapted")
   implicit val endpointResultEncoder: Encoder[EndpointResult] = deriveEncoder[EndpointResult]
+  @nowarn("msg=adapted")
   implicit val invariantResultEncoder: Encoder[InvariantResult] = deriveEncoder[InvariantResult]
 
   def writeJson(report: ConformanceReport, path: Path): Unit = {
     val json = Json.obj(
       "conformanceReport" -> Json.obj(
-        "toolVersion" -> "0.1.0".asJson,
-        "timestamp" -> report.timestamp.toString.asJson,
+        "toolVersion"   -> "0.1.0".asJson,
+        "timestamp"     -> report.timestamp.toString.asJson,
         "overallResult" -> (if (report.overallPass) "PASS" else "FAIL").asJson,
         "scenario" -> Json.obj(
-          "name" -> report.scenario.name.asJson,
-          "description" -> report.scenario.description.asJson,
-          "version" -> report.scenario.version.asJson,
-          "endpointCount" -> report.scenario.endpoints.size.asJson,
+          "name"           -> report.scenario.name.asJson,
+          "description"    -> report.scenario.description.asJson,
+          "version"        -> report.scenario.version.asJson,
+          "endpointCount"  -> report.scenario.endpoints.size.asJson,
           "invariantCount" -> report.scenario.invariants.size.asJson
         ),
-        "endpointResults" -> report.endpointResults.asJson,
+        "endpointResults"  -> report.endpointResults.asJson,
         "invariantResults" -> report.invariantResults.asJson,
         "summary" -> Json.obj(
-          "totalEndpoints" -> report.endpointResults.size.asJson,
+          "totalEndpoints"     -> report.endpointResults.size.asJson,
           "reachableEndpoints" -> report.endpointResults.count(_.reachable).asJson,
-          "passedEndpoints" -> report.endpointResults.count(r => r.reachable && r.statusMatch).asJson,
-          "failedEndpoints" -> report.endpointResults.count(r => !r.reachable || !r.statusMatch).asJson,
-          "totalInvariants" -> report.invariantResults.size.asJson,
-          "passedInvariants" -> report.invariantResults.count(_.passed).asJson,
-          "failedInvariants" -> report.invariantResults.count(!_.passed).asJson
+          "passedEndpoints"    -> report.endpointResults.count(r => r.reachable && r.statusMatch).asJson,
+          "failedEndpoints"    -> report.endpointResults.count(r => !r.reachable || !r.statusMatch).asJson,
+          "totalInvariants"    -> report.invariantResults.size.asJson,
+          "passedInvariants"   -> report.invariantResults.count(_.passed).asJson,
+          "failedInvariants"   -> report.invariantResults.count(!_.passed).asJson
         )
       )
     )
@@ -65,8 +68,10 @@ object ReportWriter {
     sb.append("|----------|-----|--------|----------|-------|---------------|----------|\n")
     report.endpointResults.foreach { r =>
       val statusStr = r.statusCode.map(_.toString).getOrElse("N/A")
-      val matchStr = if (r.reachable && r.statusMatch) "PASS" else "FAIL"
-      sb.append(s"| ${r.name} | `${r.url}` | ${statusStr} | ${r.expectedStatus} | ${matchStr} | ${r.responseTimeMs}ms | ${r.attempts} |\n")
+      val matchStr  = if (r.reachable && r.statusMatch) "PASS" else "FAIL"
+      sb.append(
+        s"| ${r.name} | `${r.url}` | ${statusStr} | ${r.expectedStatus} | ${matchStr} | ${r.responseTimeMs}ms | ${r.attempts} |\n"
+      )
     }
     sb.append("\n")
 
@@ -90,17 +95,17 @@ object ReportWriter {
     sb.append("|----|-------------|-------|--------|--------|\n")
     report.invariantResults.foreach { inv =>
       val resultStr = if (inv.passed) "PASS" else "FAIL"
-      val detail = inv.detail.getOrElse("-")
+      val detail    = inv.detail.getOrElse("-")
       sb.append(s"| ${inv.id} | ${inv.description} | `${inv.check}` | ${resultStr} | ${detail} |\n")
     }
     sb.append("\n")
 
     // Summary
     sb.append("## Summary\n\n")
-    val passedEp = report.endpointResults.count(r => r.reachable && r.statusMatch)
-    val totalEp = report.endpointResults.size
+    val passedEp  = report.endpointResults.count(r => r.reachable && r.statusMatch)
+    val totalEp   = report.endpointResults.size
     val passedInv = report.invariantResults.count(_.passed)
-    val totalInv = report.invariantResults.size
+    val totalInv  = report.invariantResults.size
     sb.append(s"- Endpoints: ${passedEp}/${totalEp} passed\n")
     sb.append(s"- Invariants: ${passedInv}/${totalInv} passed\n")
     sb.append(s"- Result: **${result}**\n\n")
