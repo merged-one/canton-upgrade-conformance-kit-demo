@@ -1,0 +1,64 @@
+scenario:
+  name: localnet-readiness-qualification
+  description: >
+    Live environment qualification for a CN Quickstart LocalNet deployment.
+    Verifies that all validator nodes and supporting services are running,
+    reachable, and reporting ready status.
+  version: "0.1.0"
+
+  endpoints:
+    # Validator 1 (Alice) — primary validator node
+    - name: validator-1-readiness
+      url: http://localhost:2903/api/validator/readyz
+      expected_status: 200
+      category: readiness
+      required: true
+
+    # Validator 2 (Bob) — second validator node
+    - name: validator-2-readiness
+      url: http://localhost:3903/api/validator/readyz
+      expected_status: 200
+      category: readiness
+      required: true
+
+    # Validator 3 (Charlie / Splitwell) — third validator node
+    - name: validator-3-readiness
+      url: http://localhost:4903/api/validator/readyz
+      expected_status: 200
+      category: readiness
+      required: true
+
+    # Validator 1 admin API — management plane
+    - name: validator-1-admin
+      url: http://localhost:2903/api/validator/v0/admin/is-onboarded
+      expected_status: 200
+      category: admin
+      required: false
+
+    # Validator 2 admin API — management plane
+    - name: validator-2-admin
+      url: http://localhost:3903/api/validator/v0/admin/is-onboarded
+      expected_status: 200
+      category: admin
+      required: false
+
+  invariants:
+    - id: INV-001
+      description: All required validator/admin endpoints must be reachable
+      check: all_endpoints_reachable
+
+    - id: INV-002
+      description: All target validator readiness checks must pass
+      check: all_readiness_pass
+
+    - id: INV-003
+      description: Scenario execution must emit deterministic machine-readable results
+      check: deterministic_results
+
+    - id: INV-004
+      description: Failures must identify which endpoint/check failed
+      check: failures_identify_endpoint
+
+    - id: INV-005
+      description: Report generation must reflect the actual observed run
+      check: report_reflects_run
