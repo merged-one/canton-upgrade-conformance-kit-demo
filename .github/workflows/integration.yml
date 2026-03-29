@@ -9,14 +9,14 @@ on:
       - 'v*'
   workflow_dispatch:
     inputs:
-      quickstart_ref:
-        description: 'cn-quickstart Git ref (branch, tag, or commit SHA)'
+      canton_version:
+        description: 'Canton/Splice Docker image version (e.g., 0.5.3)'
         required: false
-        default: 'main'
+        default: '0.5.3'
 
 env:
   JAVA_OPTS: -Xmx2g
-  QUICKSTART_REF: ${{ github.event.inputs.quickstart_ref || 'main' }}
+  CANTON_VERSION: ${{ github.event.inputs.canton_version || '0.5.3' }}
 
 permissions:
   id-token: write       # Sigstore keyless signing via GitHub OIDC
@@ -46,26 +46,12 @@ jobs:
       - name: Build conformance kit
         run: make assembly
 
-      - name: Clone cn-quickstart
-        run: |
-          git clone --depth 1 --branch "$QUICKSTART_REF" \
-            https://github.com/digital-asset/cn-quickstart.git .quickstart
-          echo "quickstart_commit=$(cd .quickstart && git rev-parse --short HEAD)" >> "$GITHUB_ENV"
-
-      - name: Install direnv
-        run: sudo apt-get update && sudo apt-get install -y direnv
-
-      - name: Configure quickstart for CI
-        working-directory: .quickstart/quickstart
-        run: CI=true make ci-create-env-local
+      - name: Override Canton version (if specified)
+        if: github.event.inputs.canton_version
+        run: sed -i "s/^CANTON_VERSION=.*/CANTON_VERSION=$CANTON_VERSION/" infra/.env
 
       - name: Start Canton network
-        working-directory: .quickstart/quickstart
-        run: |
-          # Skip the full source build (frontend/backend/daml) — we only need
-          # the Canton infrastructure containers which use pre-built Docker images.
-          # The -o flag tells Make to treat 'build' as already up-to-date.
-          make -o build start
+        run: docker compose -f infra/compose.yaml --profile app-provider --profile app-user --profile sv up -d
 
       - name: Wait for validator readiness
         run: |
@@ -152,8 +138,7 @@ jobs:
               "warnedTests": [],
               "failedTests": failed,
               "metadata": {
-                  "quickstartRef": os.environ.get("QUICKSTART_REF", "main"),
-                  "quickstartCommit": os.environ.get("quickstart_commit", "unknown"),
+                  "cantonVersion": os.environ.get("CANTON_VERSION", "unknown"),
                   "scenarioName": report.get("scenario", {}).get("name", "unknown"),
                   "scenarioVersion": report.get("scenario", {}).get("version", "unknown"),
                   "toolVersion": report.get("toolVersion", "unknown"),
@@ -185,10 +170,9 @@ jobs:
 
       - name: Capture Docker logs on failure
         if: failure()
-        working-directory: .quickstart/quickstart
         run: |
-          mkdir -p ../../reports
-          make logs > ../../reports/docker-logs.txt 2>&1 || true
+          mkdir -p reports
+          docker compose -f infra/compose.yaml logs --no-color > reports/docker-logs.txt 2>&1 || true
 
       - name: Upload Docker logs on failure
         uses: actions/upload-artifact@v4
@@ -199,17 +183,14 @@ jobs:
 
       - name: Teardown Canton network
         if: always()
-        working-directory: .quickstart/quickstart
-        run: |
-          make stop 2>/dev/null || true
-          docker compose down -v 2>/dev/null || true
+        run: docker compose -f infra/compose.yaml --profile app-provider --profile app-user --profile sv down -v
 
       - name: Summary
         if: always()
         run: |
           echo "## Conformance Results" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **cn-quickstart ref:** \`$QUICKSTART_REF\` (${{ env.quickstart_commit }})" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Canton version:** \`$CANTON_VERSION\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Scenario:** \`localnet-readiness.yaml\`" >> "$GITHUB_STEP_SUMMARY"
           if [ -f reports/ci/conformance-report.json ]; then
             RESULT=$(python3 -c "import json; r=json.load(open('reports/ci/conformance-report.json')); print(r['conformanceReport']['overallResult'])" 2>/dev/null || echo "UNKNOWN")

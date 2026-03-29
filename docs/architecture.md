@@ -68,13 +68,12 @@ The Canton Conformance Kit is a Scala + sbt CLI tool that performs live environm
 
 The `demo/run-live-demo.sh` script orchestrates the full live execution:
 
-1. Clones `digital-asset/cn-quickstart` (pinned to a ref)
-2. Starts the local Canton network via the Quickstart's Make workflow
-3. Polls readiness endpoints until healthy
-4. Invokes the Scala harness via `sbt run`
-5. Writes reports to `reports/latest/`
+1. Starts the Canton validator network via Docker Compose (`infra/compose.yaml`)
+2. Polls readiness endpoints until healthy
+3. Invokes the Scala harness via `sbt run`
+4. Writes reports to `reports/latest/`
 
-This integrates with the real CN Quickstart Docker Compose environment, which runs validator nodes, participant nodes, and supporting services.
+The infrastructure uses pre-built Canton and Splice Docker images from `ghcr.io/digital-asset/decentralized-canton-sync`, running 3 services: postgres, canton (participants + sequencer + mediator), and splice (validator apps). The Canton version is pinned in `infra/.env`.
 
 ## Design Principles
 

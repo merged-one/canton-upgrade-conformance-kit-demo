@@ -15,9 +15,9 @@ The Canton Conformance Kit uses a two-tier CI model that separates fast code-qua
 
 **Tier 1 on every PR** gives developers fast feedback (under 2 minutes) on whether their code compiles, tests pass, and the JAR builds. This is the inner development loop.
 
-**Tier 2 nightly + on releases** validates that the conformance kit works against a real Canton network. Running this on every PR would add 25+ minutes to the feedback loop and consume Docker resources unnecessarily. Nightly runs catch regressions from upstream cn-quickstart changes. Release-tag runs serve as a gate before publishing.
+**Tier 2 nightly + on releases** validates that the conformance kit works against a real Canton network. Running this on every PR would add 25+ minutes to the feedback loop and consume Docker resources unnecessarily. Nightly runs catch regressions from upstream Canton image changes. Release-tag runs serve as a gate before publishing.
 
-**Manual dispatch** allows ad-hoc testing against any cn-quickstart ref — useful for testing against upcoming Canton versions before they land on `main`.
+**Manual dispatch** allows ad-hoc testing against any Canton image version — useful for testing against upcoming releases before upgrading.
 
 ## Protocol Precedents
 
@@ -29,13 +29,13 @@ This two-tier model is not arbitrary. It reflects the consensus approach across 
 | **Cosmos SDK / IBC** | Go unit tests on PRs | E2E tests with Docker-based chain orchestration on PRs + nightly | [strangelove-ventures/interchaintest](https://github.com/strangelove-ventures/interchaintest) |
 | **Avalanche** | Unit + integration tests on PRs | E2E tests with binary version swaps; Antithesis simulation | [ava-labs/avalanche-network-runner](https://github.com/ava-labs/avalanche-network-runner) |
 | **Hyperledger Fabric** | Chaincode unit tests on PRs (~3-4 min) | Performance/regression tests **daily/weekly** | [hyperledger-labs/fablo](https://github.com/hyperledger-labs/fablo) |
-| **Canton (Digital Asset)** | sbt compile + test | Automated migration tests; staged DevNet, TestNet, MainNet | [digital-asset/cn-quickstart](https://github.com/digital-asset/cn-quickstart) |
+| **Canton (Digital Asset)** | sbt compile + test | Automated migration tests; staged DevNet, TestNet, MainNet | Canton Docker images |
 
 ### Key patterns adopted
 
 - **Ethereum Hive**: Daily scheduled runs against live infrastructure, structured machine-readable reports, separate from per-PR unit tests. Our nightly `integration.yml` follows this pattern.
-- **Cosmos interchaintest**: Docker-based chain orchestration in CI, parameterized by version ref. Our `workflow_dispatch` with `quickstart_ref` input follows this pattern.
-- **Avalanche ANR**: E2E tests that restart nodes with different binary versions to validate upgrade compatibility. Our manual dispatch against different cn-quickstart refs enables the same workflow.
+- **Cosmos interchaintest**: Docker-based chain orchestration in CI, parameterized by version ref. Our `workflow_dispatch` with `canton_version` input follows this pattern.
+- **Avalanche ANR**: E2E tests that restart nodes with different binary versions to validate upgrade compatibility. Our manual dispatch against different Canton versions enables the same workflow.
 - **Hyperledger Fabric**: Docker Compose as the primary CI orchestration method, with fast chaincode tests on PRs and longer regression suites on schedules.
 
 ## Trigger Matrix
@@ -46,7 +46,7 @@ This two-tier model is not arbitrary. It reflects the consensus approach across 
 | Pull request to `main` | Yes | No |
 | Nightly schedule (02:17 UTC) | No | Yes |
 | Release tag (`v*`) | No | Yes |
-| Manual dispatch | No | Yes (with configurable `quickstart_ref`) |
+| Manual dispatch | No | Yes (with configurable `canton_version`) |
 
 ## Local Execution
 
@@ -65,7 +65,7 @@ make integration-harness
 
 `make ci` runs: format check, compile with fatal warnings, unit tests, assembly.
 
-`make integration` runs the full `demo/run-live-demo.sh` script: clones cn-quickstart, starts Docker Compose network, polls readiness, runs harness, generates reports.
+`make integration` runs the full `demo/run-live-demo.sh` script: starts Docker Compose network, polls readiness, runs harness, generates reports.
 
 `make integration-harness` skips network lifecycle and runs only the conformance harness — useful when you already have a Canton network running.
 
@@ -99,9 +99,9 @@ make integration-harness
 | Tier 1 fails on format | `make fmt` to auto-fix | Unformatted code committed |
 | Tier 1 fails on compile | Compiler output in Actions log | New warning introduced (fatal in CI) |
 | Tier 2 times out on readiness | Docker logs artifact | Canton node failed to start; check container OOM, port conflicts |
-| Tier 2 harness fails INV-001 | Conformance report artifact | Endpoint URL changed in cn-quickstart |
+| Tier 2 harness fails INV-001 | Conformance report artifact | Endpoint URL or port mapping changed |
 | Tier 2 harness fails INV-002 | Conformance report artifact | Validator not fully onboarded; may need longer retry |
-| Nightly starts failing | Compare cn-quickstart commit in summary | Upstream breaking change in cn-quickstart |
+| Nightly starts failing | Check Canton image version in summary | Upstream breaking change in Canton images |
 
 ## Artifacts
 
@@ -153,7 +153,7 @@ A locally generated certificate with a project-managed key provides minimal assu
 
 ## Future Enhancements
 
-- **Version matrix**: Run integration against multiple cn-quickstart refs in parallel (e.g., `main`, `release/2.x`, `release/3.x`) to build a compatibility matrix
+- **Version matrix**: Run integration against multiple Canton versions in parallel (e.g., `main`, `release/2.x`, `release/3.x`) to build a compatibility matrix
 - **Docker image caching**: Use `docker/build-push-action` cache to reduce cold start time
 - **GitHub Pages reports**: Publish conformance reports to GitHub Pages for historical tracking
 - **Slack/webhook notifications**: Alert on nightly failures
