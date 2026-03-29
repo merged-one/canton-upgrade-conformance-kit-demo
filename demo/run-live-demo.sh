@@ -46,11 +46,21 @@ POLL_INTERVAL=10
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-CYAN='\033[0;36m'
-NC='\033[0m'
+# Disable color output in CI environments or when NO_COLOR is set
+# See https://no-color.org/
+if [[ -n "${NO_COLOR:-}" ]] || [[ -n "${CI:-}" ]]; then
+  RED=''
+  GREEN=''
+  YELLOW=''
+  CYAN=''
+  NC=''
+else
+  RED='\033[0;31m'
+  GREEN='\033[0;32m'
+  YELLOW='\033[1;33m'
+  CYAN='\033[0;36m'
+  NC='\033[0m'
+fi
 
 log()   { echo -e "${CYAN}[conformance]${NC} $*"; }
 warn()  { echo -e "${YELLOW}[conformance]${NC} $*"; }

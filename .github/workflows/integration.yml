@@ -1,0 +1,141 @@
+name: Integration
+
+on:
+  schedule:
+    # Nightly at 02:17 UTC — offset from :00 to reduce fleet contention
+    - cron: '17 2 * * *'
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      quickstart_ref:
+        description: 'cn-quickstart Git ref (branch, tag, or commit SHA)'
+        required: false
+        default: 'main'
+
+env:
+  JAVA_OPTS: -Xmx2g
+  QUICKSTART_REF: ${{ github.event.inputs.quickstart_ref || 'main' }}
+
+jobs:
+  conformance:
+    name: Live Network Conformance
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: sbt
+
+      - name: Build conformance kit
+        run: make assembly
+
+      - name: Clone cn-quickstart
+        run: |
+          git clone --depth 1 --branch "$QUICKSTART_REF" \
+            https://github.com/digital-asset/cn-quickstart.git .quickstart
+          echo "quickstart_commit=$(cd .quickstart && git rev-parse --short HEAD)" >> "$GITHUB_ENV"
+
+      - name: Install direnv
+        run: sudo apt-get update && sudo apt-get install -y direnv
+
+      - name: Start Canton network
+        working-directory: .quickstart
+        run: make start
+
+      - name: Wait for validator readiness
+        run: |
+          ENDPOINTS=(
+            "http://localhost:2903/api/validator/readyz"
+            "http://localhost:3903/api/validator/readyz"
+            "http://localhost:4903/api/validator/readyz"
+          )
+          MAX_WAIT=300
+          INTERVAL=10
+          ELAPSED=0
+
+          echo "Waiting for ${#ENDPOINTS[@]} validator endpoints (timeout: ${MAX_WAIT}s)..."
+
+          while true; do
+            if [ "$ELAPSED" -ge "$MAX_WAIT" ]; then
+              echo "::error::Timed out after ${MAX_WAIT}s waiting for validators"
+              for ep in "${ENDPOINTS[@]}"; do
+                curl -sf --max-time 5 "$ep" >/dev/null 2>&1 || echo "  NOT READY: $ep"
+              done
+              exit 1
+            fi
+
+            ALL_READY=true
+            for ep in "${ENDPOINTS[@]}"; do
+              if ! curl -sf --max-time 5 "$ep" >/dev/null 2>&1; then
+                ALL_READY=false
+                break
+              fi
+            done
+
+            if [ "$ALL_READY" = true ]; then
+              echo "All validators healthy after ${ELAPSED}s"
+              break
+            fi
+
+            echo "  ... waiting (${ELAPSED}s elapsed)"
+            sleep "$INTERVAL"
+            ELAPSED=$((ELAPSED + INTERVAL))
+          done
+
+      - name: Run conformance harness
+        run: |
+          java -jar target/scala-2.13/canton-conformance-kit.jar \
+            --scenario demo/scenarios/localnet-readiness.yaml \
+            --output reports/ci \
+            --retries 3 \
+            --retry-delay 5 \
+            --verbose
+
+      - name: Upload conformance reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: conformance-reports-${{ github.sha }}
+          path: reports/ci/
+          retention-days: 30
+
+      - name: Capture Docker logs on failure
+        if: failure()
+        working-directory: .quickstart
+        run: |
+          docker compose logs --tail=200 > ../reports/docker-logs.txt 2>&1 || true
+
+      - name: Upload Docker logs on failure
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: docker-logs-${{ github.sha }}
+          path: reports/docker-logs.txt
+
+      - name: Teardown Canton network
+        if: always()
+        working-directory: .quickstart
+        run: |
+          make stop 2>/dev/null || true
+          docker compose down -v 2>/dev/null || true
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Conformance Results" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **cn-quickstart ref:** \`$QUICKSTART_REF\` (${{ env.quickstart_commit }})" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Scenario:** \`localnet-readiness.yaml\`" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f reports/ci/conformance-report.json ]; then
+            RESULT=$(python3 -c "import json; r=json.load(open('reports/ci/conformance-report.json')); print(r['conformanceReport']['overallResult'])" 2>/dev/null || echo "UNKNOWN")
+            echo "- **Result:** \`$RESULT\`" >> "$GITHUB_STEP_SUMMARY"
+          fi

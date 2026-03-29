@@ -155,6 +155,30 @@ reports/latest/
 | INV-004 | `failures_identify_endpoint` | Any failure identifies the endpoint name, URL, and error |
 | INV-005 | `report_reflects_run` | Reports generated from actual observed data, not templates |
 
+## CI Pipeline
+
+The project uses a two-tier CI model following blockchain protocol best practices (see [docs/ci-strategy.md](docs/ci-strategy.md) for full justification with protocol precedents).
+
+| Tier | What | When | Runtime | Local command |
+|------|------|------|---------|---------------|
+| **Tier 1: Code Quality** | Format, compile (warnings-as-errors), unit tests, assembly | Every PR and push to `main` | ~2 min | `make ci` |
+| **Tier 2: Live Conformance** | Spin up Canton network, run conformance harness, validate 5 invariants | Nightly, release tags, manual dispatch | ~25 min | `make integration` |
+
+This mirrors how Ethereum (Hive), Cosmos (interchaintest), Avalanche (ANR), and Hyperledger Fabric separate fast code-quality CI from slower live-network conformance testing.
+
+```bash
+# Tier 1: Code quality checks (no Docker needed)
+make ci
+
+# Tier 2: Full integration with live Canton network (requires Docker)
+make integration
+
+# Tier 2: Harness only (Canton network already running)
+make integration-harness
+```
+
+The integration workflow supports testing against any cn-quickstart version via manual dispatch with a configurable `quickstart_ref` input — enabling version compatibility validation similar to Avalanche's binary-swap E2E tests.
+
 ## Testing
 
 ```bash
@@ -175,10 +199,15 @@ Every invariant has counter-case tests that verify the harness correctly detects
 
 ```
 .
+├── .github/workflows/
+│   ├── ci.yml                         # Tier 1: code quality (PRs, push to main)
+│   └── integration.yml                # Tier 2: live network conformance (nightly, releases, manual)
+├── .scalafmt.conf                     # Scalafmt configuration
+├── Makefile                           # Build targets (ci, integration, fmt, test, assembly, etc.)
 ├── build.sbt                          # Scala/sbt project definition
 ├── project/
 │   ├── build.properties               # sbt version pin
-│   └── plugins.sbt                    # sbt-assembly plugin
+│   └── plugins.sbt                    # sbt-assembly + sbt-scalafmt plugins
 ├── src/
 │   ├── main/scala/com/digitalasset/conformance/
 │   │   ├── Main.scala                 # CLI entrypoint
@@ -197,7 +226,8 @@ Every invariant has counter-case tests that verify the harness correctly detects
 │       └── localnet-readiness.yaml    # Scenario definition
 ├── reports/                            # Generated reports (gitignored)
 ├── docs/
-│   └── architecture.md                # Architecture documentation
+│   ├── architecture.md                # Architecture documentation
+│   └── ci-strategy.md                 # CI strategy with protocol precedents
 ├── .gitignore
 ├── LICENSE                             # Apache 2.0
 └── README.md
