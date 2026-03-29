@@ -18,6 +18,11 @@ env:
   JAVA_OPTS: -Xmx2g
   QUICKSTART_REF: ${{ github.event.inputs.quickstart_ref || 'main' }}
 
+permissions:
+  id-token: write       # Sigstore keyless signing via GitHub OIDC
+  contents: read
+  attestations: write   # Store attestations in GitHub's attestation API
+
 jobs:
   conformance:
     name: Live Network Conformance
@@ -118,6 +123,65 @@ jobs:
           name: conformance-reports-${{ github.sha }}
           path: reports/ci/
           retention-days: 30
+
+      - name: Generate conformance predicate
+        if: success()
+        run: |
+          # Extract test results from the conformance report and format as
+          # an in-toto test-result predicate (https://in-toto.io/attestation/test-result/v0.1)
+          python3 - <<'PYEOF'
+          import json, os
+
+          with open("reports/ci/conformance-report.json") as f:
+              report = json.load(f)["conformanceReport"]
+
+          passed = []
+          failed = []
+          for inv in report.get("invariantResults", []):
+              target = passed if inv["passed"] else failed
+              target.append(inv["id"])
+
+          predicate = {
+              "result": "PASSED" if report["overallResult"] == "PASS" else "FAILED",
+              "configuration": [{
+                  "name": "localnet-readiness.yaml",
+                  "digest": {"gitCommit": os.environ["GITHUB_SHA"]}
+              }],
+              "url": f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}",
+              "passedTests": passed,
+              "warnedTests": [],
+              "failedTests": failed,
+              "metadata": {
+                  "quickstartRef": os.environ.get("QUICKSTART_REF", "main"),
+                  "quickstartCommit": os.environ.get("quickstart_commit", "unknown"),
+                  "scenarioName": report.get("scenario", {}).get("name", "unknown"),
+                  "scenarioVersion": report.get("scenario", {}).get("version", "unknown"),
+                  "toolVersion": report.get("toolVersion", "unknown"),
+                  "timestamp": report.get("timestamp", "unknown")
+              }
+          }
+
+          with open("conformance-predicate.json", "w") as f:
+              json.dump(predicate, f, indent=2)
+
+          print(f"Predicate: {report['overallResult']} — {len(passed)} passed, {len(failed)} failed")
+          PYEOF
+
+      - name: Attest conformance report
+        if: success()
+        uses: actions/attest@v4
+        with:
+          subject-path: reports/ci/conformance-report.json
+          predicate-type: 'https://in-toto.io/attestation/test-result/v0.1'
+          predicate-path: conformance-predicate.json
+
+      - name: Attest conformance kit JAR
+        if: success()
+        uses: actions/attest@v4
+        with:
+          subject-path: target/scala-2.13/canton-conformance-kit.jar
+          predicate-type: 'https://in-toto.io/attestation/test-result/v0.1'
+          predicate-path: conformance-predicate.json
 
       - name: Capture Docker logs on failure
         if: failure()
