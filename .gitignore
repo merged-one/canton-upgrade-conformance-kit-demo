@@ -12,8 +12,8 @@ project/project/
 # Reports (generated)
 reports/
 
-# Quickstart clone
-.quickstart/
+# Claude Code
+.claude/
 
 # OS
 .DS_Store

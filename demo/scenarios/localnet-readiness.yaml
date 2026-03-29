@@ -1,7 +1,7 @@
 scenario:
   name: localnet-readiness-qualification
   description: >
-    Live environment qualification for a CN Quickstart LocalNet deployment.
+    Live environment qualification for a local Canton network deployment.
     Verifies that all validator nodes and supporting services are running,
     reachable, and reporting ready status.
   version: "0.1.0"

@@ -3,15 +3,13 @@
 # Canton Conformance Kit — Live Demo Runner
 #
 # This script:
-#   1. Clones/updates the CN Quickstart reference environment
-#   2. Configures and starts the local Canton network
-#   3. Waits for validator services to become healthy
-#   4. Runs the Scala conformance harness
-#   5. Generates JSON + Markdown reports
+#   1. Starts the Canton validator network via Docker Compose
+#   2. Waits for validator services to become healthy
+#   3. Runs the Scala conformance harness
+#   4. Generates JSON + Markdown reports
 #
 # Prerequisites:
 #   - Docker Desktop (8+ GB RAM allocated)
-#   - direnv
 #   - JDK 21+
 #   - sbt
 #   - bash 4+
@@ -26,12 +24,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-QUICKSTART_CLONE_DIR="${PROJECT_ROOT}/.quickstart"
-QUICKSTART_REPO="https://github.com/digital-asset/cn-quickstart.git"
-# Pin to a known tag/branch for reproducibility; update as needed
-QUICKSTART_REF="main"
-# The Makefile lives in the quickstart/ subdirectory of the repo
-QUICKSTART_DIR="${QUICKSTART_CLONE_DIR}/quickstart"
+COMPOSE_FILE="${PROJECT_ROOT}/infra/compose.yaml"
+COMPOSE_PROFILES="--profile app-provider --profile app-user --profile sv"
 
 REPORT_DIR="${PROJECT_ROOT}/reports/latest"
 SCENARIO_FILE="${PROJECT_ROOT}/demo/scenarios/localnet-readiness.yaml"
@@ -45,28 +39,6 @@ READINESS_ENDPOINTS=(
 
 MAX_WAIT_SECONDS=300
 POLL_INTERVAL=10
-
-# ─── Java Detection ──────────────────────────────────────────────────────────
-
-# Ensure JAVA_HOME is set — cn-quickstart's gradlew requires it.
-# sbt finds Java via its own launcher, but gradlew needs JAVA_HOME on PATH.
-if [ -z "${JAVA_HOME:-}" ]; then
-  if command -v /usr/libexec/java_home >/dev/null 2>&1; then
-    export JAVA_HOME="$(/usr/libexec/java_home 2>/dev/null || true)"
-  fi
-  # Fallback: check Homebrew OpenJDK locations (macOS)
-  if [ -z "${JAVA_HOME:-}" ]; then
-    for jdk in /opt/homebrew/opt/openjdk@21 /opt/homebrew/opt/openjdk@17 /opt/homebrew/opt/openjdk; do
-      if [ -d "$jdk/libexec/openjdk.jdk/Contents/Home" ]; then
-        export JAVA_HOME="$jdk/libexec/openjdk.jdk/Contents/Home"
-        break
-      fi
-    done
-  fi
-  if [ -n "${JAVA_HOME:-}" ]; then
-    export PATH="$JAVA_HOME/bin:$PATH"
-  fi
-fi
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -97,10 +69,9 @@ check_prereqs() {
   log "Checking prerequisites..."
   local missing=()
   command -v docker   >/dev/null 2>&1 || missing+=("docker")
-  command -v java     >/dev/null 2>&1 || missing+=("java (JDK 21+)")
+  command -v java     >/dev/null 2>&1 || missing+=("java (JDK 21+)") || true
   command -v sbt      >/dev/null 2>&1 || missing+=("sbt")
   command -v curl     >/dev/null 2>&1 || missing+=("curl")
-  command -v git      >/dev/null 2>&1 || missing+=("git")
 
   if [ ${#missing[@]} -gt 0 ]; then
     die "Missing prerequisites: ${missing[*]}"
@@ -113,39 +84,10 @@ check_prereqs() {
   ok "All prerequisites satisfied."
 }
 
-# ─── Step 1: Clone / Update Quickstart ───────────────────────────────────────
-
-setup_quickstart() {
-  log "Setting up CN Quickstart reference environment..."
-
-  if [ -d "$QUICKSTART_CLONE_DIR/.git" ]; then
-    log "Quickstart repo already cloned at $QUICKSTART_CLONE_DIR"
-    log "Updating to ref: $QUICKSTART_REF"
-    (cd "$QUICKSTART_CLONE_DIR" && git fetch origin && git checkout "$QUICKSTART_REF" && git pull origin "$QUICKSTART_REF" 2>/dev/null || true)
-  else
-    log "Cloning cn-quickstart ($QUICKSTART_REF)..."
-    git clone --depth 1 --branch "$QUICKSTART_REF" "$QUICKSTART_REPO" "$QUICKSTART_CLONE_DIR"
-  fi
-
-  if [ ! -d "$QUICKSTART_DIR" ]; then
-    die "Expected quickstart/ subdirectory not found at $QUICKSTART_DIR. The cn-quickstart repo structure may have changed."
-  fi
-
-  ok "Quickstart repo ready at $QUICKSTART_CLONE_DIR"
-  log "  Commit: $(cd "$QUICKSTART_CLONE_DIR" && git rev-parse --short HEAD)"
-}
-
-# ─── Step 2: Start the Environment ──────────────────────────────────────────
+# ─── Step 1: Start the Environment ──────────────────────────────────────────
 
 start_environment() {
-  log "Starting CN Quickstart local environment..."
-  log "  (This may take several minutes on first run)"
-  log ""
-  log "  The Quickstart environment uses 'make' commands."
-  log "  If this is a fresh clone, you may need to run 'make setup' interactively first."
-  log ""
-
-  cd "$QUICKSTART_DIR"
+  log "Starting Canton validator network..."
 
   # Check if environment appears to be already running
   local already_running=true
@@ -158,43 +100,23 @@ start_environment() {
 
   if [ "$already_running" = true ]; then
     ok "Environment appears to already be running. Skipping start."
-    cd "$PROJECT_ROOT"
     return 0
   fi
 
-  # Attempt to start — this assumes 'make setup' has been run at least once.
-  # The Quickstart Makefile orchestrates Docker Compose under the hood.
-  if [ -f Makefile ]; then
-    # If .env.local doesn't exist and we're in CI (or non-interactive), create it
-    # using the quickstart's built-in CI configuration target.
-    if [ ! -f .env.local ]; then
-      if [[ -n "${CI:-}" ]] || [[ ! -t 0 ]]; then
-        log "No .env.local found — generating CI configuration..."
-        CI=true make ci-create-env-local
-      fi
-    fi
-    log "Running 'make start' in Quickstart directory..."
-    make start || {
-      err "Failed to start environment."
-      err ""
-      err "If this is a first-time setup, you may need to run interactively:"
-      err "  cd $QUICKSTART_DIR"
-      err "  make setup    # (interactive configuration)"
-      err "  make build"
-      err "  make start"
-      err ""
-      err "Then re-run this demo script."
-      exit 1
-    }
-  else
-    die "No Makefile found in $QUICKSTART_DIR. The cn-quickstart repo may have changed structure."
-  fi
+  log "Starting Docker Compose services..."
+  # shellcheck disable=SC2086
+  docker compose -f "$COMPOSE_FILE" $COMPOSE_PROFILES up -d || {
+    err "Failed to start environment."
+    err ""
+    err "Make sure Docker Desktop is running with 8+ GB RAM allocated."
+    err "Check container logs with: docker compose -f infra/compose.yaml logs"
+    exit 1
+  }
 
-  cd "$PROJECT_ROOT"
-  ok "Environment start command issued."
+  ok "Docker Compose services started."
 }
 
-# ─── Step 3: Wait for Readiness ──────────────────────────────────────────────
+# ─── Step 2: Wait for Readiness ──────────────────────────────────────────────
 
 wait_for_readiness() {
   log "Waiting for validator services to become healthy..."
@@ -213,7 +135,7 @@ wait_for_readiness() {
           err "  - $ep"
         fi
       done
-      die "Environment not ready. Check Docker containers with 'docker ps'."
+      die "Environment not ready. Check Docker containers with 'docker ps' and logs with 'docker compose -f infra/compose.yaml logs'."
     fi
 
     local all_ready=true
@@ -234,7 +156,7 @@ wait_for_readiness() {
   done
 }
 
-# ─── Step 4: Run the Conformance Harness ─────────────────────────────────────
+# ─── Step 3: Run the Conformance Harness ─────────────────────────────────────
 
 run_harness() {
   log "Building and running the Scala conformance harness..."
@@ -252,7 +174,7 @@ run_harness() {
   return $exit_code
 }
 
-# ─── Step 5: Summary ─────────────────────────────────────────────────────────
+# ─── Step 4: Summary ─────────────────────────────────────────────────────────
 
 print_summary() {
   local exit_code=$1
@@ -278,12 +200,11 @@ print_summary() {
     err "Demo completed with failures — see reports for details."
   fi
 
+  # Show Canton version from infra/.env
+  local canton_version
+  canton_version=$(grep '^CANTON_VERSION=' "$PROJECT_ROOT/infra/.env" | cut -d= -f2)
   echo ""
-  echo "  Upstream repo: $QUICKSTART_REPO"
-  echo "  Upstream ref:  $QUICKSTART_REF"
-  if [ -d "$QUICKSTART_CLONE_DIR/.git" ]; then
-    echo "  Upstream commit: $(cd "$QUICKSTART_CLONE_DIR" && git rev-parse --short HEAD)"
-  fi
+  echo "  Canton version: ${canton_version:-unknown}"
   echo ""
 
   return "$exit_code"
@@ -299,9 +220,6 @@ main() {
   echo ""
 
   check_prereqs
-  echo ""
-
-  setup_quickstart
   echo ""
 
   start_environment

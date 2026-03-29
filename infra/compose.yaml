@@ -1,0 +1,177 @@
+# Canton Conformance Kit — Minimal Infrastructure
+#
+# 3 services only: postgres, canton, splice
+# Provides 3 validator readyz endpoints on ports 2903, 3903, 4903
+#
+# Usage:
+#   docker compose --profile app-provider --profile app-user --profile sv up -d
+
+volumes:
+  postgres:
+  domain-upgrade-dump:
+
+networks:
+  default:
+    name: ${DOCKER_NETWORK}
+    driver: bridge
+
+services:
+  postgres:
+    image: "postgres:${POSTGRES_VERSION}"
+    container_name: canton-postgres
+    volumes:
+      - postgres:/var/lib/postgresql/data
+      - ./conf/docker/postgres-entrypoint.sh:/postgres-entrypoint.sh
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_SERVER}
+      CREATE_DATABASE_01: participant-app-provider
+      CREATE_DATABASE_02: validator-app-provider
+      CREATE_DATABASE_03: participant-app-user
+      CREATE_DATABASE_04: validator-app-user
+      CREATE_DATABASE_05: participant-sv
+      CREATE_DATABASE_06: validator-sv
+      CREATE_DATABASE_07: sequencer
+      CREATE_DATABASE_08: mediator
+      CREATE_DATABASE_09: scan
+      CREATE_DATABASE_10: sv
+    entrypoint: /postgres-entrypoint.sh
+    healthcheck:
+      test: "pg_isready -U ${DB_USER} -d postgres"
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 60s
+    user: "postgres"
+    command:
+      - postgres
+      - -c
+      - max_connections=1000
+    profiles:
+      - app-provider
+      - app-user
+      - sv
+
+  canton:
+    image: "${IMAGE_REPO}canton:${CANTON_VERSION}"
+    container_name: canton
+    environment:
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_SERVER: ${DB_SERVER}
+      SV_PROFILE: ${SV_PROFILE}
+      APP_PROVIDER_PROFILE: ${APP_PROVIDER_PROFILE}
+      APP_USER_PROFILE: ${APP_USER_PROFILE}
+      PARTICIPANT_LEDGER_API_PORT_SUFFIX: ${PARTICIPANT_LEDGER_API_PORT_SUFFIX}
+      PARTICIPANT_ADMIN_API_PORT_SUFFIX: ${PARTICIPANT_ADMIN_API_PORT_SUFFIX}
+      PARTICIPANT_JSON_API_PORT_SUFFIX: ${PARTICIPANT_JSON_API_PORT_SUFFIX}
+      CANTON_HTTP_HEALTHCHECK_PORT_SUFFIX: ${CANTON_HTTP_HEALTHCHECK_PORT_SUFFIX}
+      CANTON_GRPC_HEALTHCHECK_PORT_SUFFIX: ${CANTON_GRPC_HEALTHCHECK_PORT_SUFFIX}
+      AUTH_SV_AUDIENCE: ${AUTH_SV_AUDIENCE}
+      AUTH_SV_VALIDATOR_USER_NAME: ${AUTH_SV_VALIDATOR_USER_NAME}
+      AUTH_APP_PROVIDER_AUDIENCE: ${AUTH_APP_PROVIDER_AUDIENCE}
+      AUTH_APP_PROVIDER_VALIDATOR_USER_NAME: ${AUTH_APP_PROVIDER_VALIDATOR_USER_NAME}
+      AUTH_APP_USER_AUDIENCE: ${AUTH_APP_USER_AUDIENCE}
+      AUTH_APP_USER_VALIDATOR_USER_NAME: ${AUTH_APP_USER_VALIDATOR_USER_NAME}
+    volumes:
+      - ./conf/docker/canton-healthcheck.sh:/app/health-check.sh
+      - ./conf/canton/app.conf:/app/app.conf
+      - ./conf/canton/app-provider:/app/app-provider/on
+      - ./conf/canton/app-user:/app/app-user/on
+      - ./conf/canton/sv:/app/sv/on
+    ports:
+      - "4${PARTICIPANT_LEDGER_API_PORT_SUFFIX}:4${PARTICIPANT_LEDGER_API_PORT_SUFFIX}"
+      - "4${PARTICIPANT_ADMIN_API_PORT_SUFFIX}:4${PARTICIPANT_ADMIN_API_PORT_SUFFIX}"
+      - "3${PARTICIPANT_LEDGER_API_PORT_SUFFIX}:3${PARTICIPANT_LEDGER_API_PORT_SUFFIX}"
+      - "3${PARTICIPANT_ADMIN_API_PORT_SUFFIX}:3${PARTICIPANT_ADMIN_API_PORT_SUFFIX}"
+      - "2${PARTICIPANT_LEDGER_API_PORT_SUFFIX}:2${PARTICIPANT_LEDGER_API_PORT_SUFFIX}"
+      - "2${PARTICIPANT_ADMIN_API_PORT_SUFFIX}:2${PARTICIPANT_ADMIN_API_PORT_SUFFIX}"
+    healthcheck:
+      test: ["CMD", "bash", "/app/health-check.sh"]
+      interval: 20s
+      start_interval: 5s
+      timeout: 30s
+      retries: 10
+      start_period: 20s
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: always
+    profiles:
+      - app-provider
+      - app-user
+      - sv
+
+  splice:
+    image: "${IMAGE_REPO}splice-app:${CANTON_VERSION}"
+    container_name: splice
+    environment:
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_SERVER: ${DB_SERVER}
+      SV_PROFILE: ${SV_PROFILE}
+      APP_PROVIDER_PROFILE: ${APP_PROVIDER_PROFILE}
+      APP_USER_PROFILE: ${APP_USER_PROFILE}
+      VALIDATOR_ADMIN_API_PORT_SUFFIX: ${VALIDATOR_ADMIN_API_PORT_SUFFIX}
+      PARTICIPANT_LEDGER_API_PORT_SUFFIX: ${PARTICIPANT_LEDGER_API_PORT_SUFFIX}
+      PARTICIPANT_ADMIN_API_PORT_SUFFIX: ${PARTICIPANT_ADMIN_API_PORT_SUFFIX}
+      TARGET_TRAFFIC_THROUGHPUT: ${TARGET_TRAFFIC_THROUGHPUT}
+      MIN_TRAFFIC_TOPUP_INTERVAL: ${MIN_TRAFFIC_TOPUP_INTERVAL}
+      SPLICE_APP_VALIDATOR_SV_SPONSOR_ADDRESS: ${SPLICE_APP_VALIDATOR_SV_SPONSOR_ADDRESS}
+      SPLICE_APP_VALIDATOR_SCAN_ADDRESS: ${SPLICE_APP_VALIDATOR_SCAN_ADDRESS}
+      APP_PROVIDER_VALIDATOR_ONBOARDING_SECRET: ${APP_PROVIDER_VALIDATOR_ONBOARDING_SECRET}
+      APP_USER_VALIDATOR_ONBOARDING_SECRET: ${APP_USER_VALIDATOR_ONBOARDING_SECRET}
+      MIGRATION_ID: ${MIGRATION_ID}
+      LATEST_PACKAGES_ONLY: ${LATEST_PACKAGES_ONLY}
+      APP_PROVIDER_PARTY_HINT: ${APP_PROVIDER_PARTY_HINT}
+      APP_USER_PARTY_HINT: ${APP_USER_PARTY_HINT}
+      SPLICE_SV_IS_DEVNET: ${SPLICE_SV_IS_DEVNET}
+      SPLICE_APP_UI_NETWORK_NAME: ${SPLICE_APP_UI_NETWORK_NAME}
+      SPLICE_APP_UI_NETWORK_FAVICON_URL: ${SPLICE_APP_UI_NETWORK_FAVICON_URL}
+      SPLICE_APP_UI_AMULET_NAME: ${SPLICE_APP_UI_AMULET_NAME}
+      SPLICE_APP_UI_AMULET_NAME_ACRONYM: ${SPLICE_APP_UI_AMULET_NAME_ACRONYM}
+      SPLICE_APP_UI_NAME_SERVICE_NAME: ${SPLICE_APP_UI_NAME_SERVICE_NAME}
+      SPLICE_APP_UI_NAME_SERVICE_NAME_ACRONYM: ${SPLICE_APP_UI_NAME_SERVICE_NAME_ACRONYM}
+      AUTH_SV_AUDIENCE: ${AUTH_SV_AUDIENCE}
+      AUTH_SV_VALIDATOR_USER_NAME: ${AUTH_SV_VALIDATOR_USER_NAME}
+      AUTH_SV_WALLET_ADMIN_USER_NAME: ${AUTH_SV_WALLET_ADMIN_USER_NAME}
+      AUTH_APP_PROVIDER_AUDIENCE: ${AUTH_APP_PROVIDER_AUDIENCE}
+      AUTH_APP_PROVIDER_VALIDATOR_USER_NAME: ${AUTH_APP_PROVIDER_VALIDATOR_USER_NAME}
+      AUTH_APP_PROVIDER_WALLET_ADMIN_USER_NAME: ${AUTH_APP_PROVIDER_WALLET_ADMIN_USER_NAME}
+      AUTH_APP_USER_AUDIENCE: ${AUTH_APP_USER_AUDIENCE}
+      AUTH_APP_USER_VALIDATOR_USER_NAME: ${AUTH_APP_USER_VALIDATOR_USER_NAME}
+      AUTH_APP_USER_WALLET_ADMIN_USER_NAME: ${AUTH_APP_USER_WALLET_ADMIN_USER_NAME}
+      SPLICE_APP_VALIDATOR_LEDGER_API_AUTH_AUDIENCE: ${SPLICE_APP_VALIDATOR_LEDGER_API_AUTH_AUDIENCE}
+      SPLICE_APP_UI_AUTH_AUDIENCE: ${SPLICE_APP_UI_AUTH_AUDIENCE}
+      SPLICE_APP_VALIDATOR_AUTH_AUDIENCE: ${SPLICE_APP_VALIDATOR_AUTH_AUDIENCE}
+      SPLICE_APP_UI_UNSAFE: ${SPLICE_APP_UI_UNSAFE}
+      SPLICE_APP_UI_UNSAFE_SECRET: ${SPLICE_APP_UI_UNSAFE_SECRET}
+      SPLICE_APP_UI_HTTP_URL: ${SPLICE_APP_UI_HTTP_URL}
+      SPLICE_APP_CONTACT_POINT: ""
+    volumes:
+      - ./conf/docker/splice-healthcheck.sh:/app/health-check.sh
+      - ./conf/splice/app.conf:/app/app.conf
+      - ./conf/splice/app-provider:/app/app-provider/on
+      - ./conf/splice/app-user:/app/app-user/on
+      - ./conf/splice/sv:/app/sv/on
+      - domain-upgrade-dump:/domain-upgrade-dump
+    healthcheck:
+      test: ["CMD", "bash", "/app/health-check.sh"]
+      interval: 20s
+      start_interval: 5s
+      timeout: 40s
+      retries: 1000
+      start_period: 30s
+    ports:
+      - "4${VALIDATOR_ADMIN_API_PORT_SUFFIX}:4${VALIDATOR_ADMIN_API_PORT_SUFFIX}"
+      - "3${VALIDATOR_ADMIN_API_PORT_SUFFIX}:3${VALIDATOR_ADMIN_API_PORT_SUFFIX}"
+      - "2${VALIDATOR_ADMIN_API_PORT_SUFFIX}:2${VALIDATOR_ADMIN_API_PORT_SUFFIX}"
+    depends_on:
+      canton:
+        condition: service_healthy
+    restart: always
+    profiles:
+      - app-provider
+      - app-user
+      - sv

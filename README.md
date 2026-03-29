@@ -2,13 +2,13 @@
 
 A Scala + sbt native toolkit for **upgrade safety, version compatibility testing, and reproducible conformance reporting** for Canton deployments and reference applications.
 
-This repository is a working proof-of-execution demo that runs live environment qualification against a real [CN Quickstart](https://github.com/digital-asset/cn-quickstart) local Canton network.
+This repository is a working proof-of-execution demo that runs live environment qualification against a real Canton validator network using pre-built Docker images.
 
 ## What This Demo Proves
 
 This demo executes a real conformance scenario against live Canton services — not mocks, not fakes, not placeholder output. Specifically, it:
 
-1. **Starts a real CN Quickstart local environment** (Docker Compose-based Canton network with validator nodes)
+1. **Starts a real Canton validator network** (Docker Compose with pre-built Canton/Splice images)
 2. **Runs a Scala CLI harness** that loads a YAML scenario, makes real HTTP requests to validator readiness/admin endpoints, and evaluates five invariants
 3. **Generates real conformance reports** (JSON + Markdown) reflecting the actual observed run
 4. **Exits nonzero on failure**, with reports identifying exactly which endpoints/checks failed
@@ -18,17 +18,20 @@ This demo executes a real conformance scenario against live Canton services — 
 - The conformance harness makes actual HTTP requests to live services
 - Endpoint results include real HTTP status codes, response times, and error messages
 - Reports are generated from observed data — there are no static templates or hardcoded success messages
-- The full live demo runs against `digital-asset/cn-quickstart`, which brings up real Canton validator nodes via Docker Compose
+- The full live demo starts real Canton validator nodes via Docker Compose using pre-built images from `ghcr.io/digital-asset/decentralized-canton-sync`
 - Unit tests validate that the harness correctly detects and reports failures (every invariant has pass and fail counter cases)
 
-## Upstream Repos Used
+## Canton Infrastructure
 
-| Repo | Purpose | Pinned Ref |
-|------|---------|------------|
-| [digital-asset/cn-quickstart](https://github.com/digital-asset/cn-quickstart) | Live reference environment (Docker Compose, validator nodes, services) | `main` (tip) |
-| [digital-asset/canton](https://github.com/digital-asset/canton) | Canton protocol implementation (runs inside Quickstart containers) | Via Quickstart's container images |
+The conformance kit includes its own minimal Docker Compose setup (`infra/`) that pulls pre-built Canton images directly — no external dependencies to clone or build.
 
-The Quickstart environment is cloned at demo time and started using its documented `make start` workflow.
+| Image | Registry | Version |
+|-------|----------|---------|
+| `canton` | `ghcr.io/digital-asset/decentralized-canton-sync/docker/` | `0.5.3` |
+| `splice-app` | `ghcr.io/digital-asset/decentralized-canton-sync/docker/` | `0.5.3` |
+| `postgres` | Docker Hub | `14` |
+
+Version is pinned in `infra/.env` and overridable via CI manual dispatch for version compatibility testing.
 
 ## Prerequisites
 
@@ -39,11 +42,9 @@ The Quickstart environment is cloned at demo time and started using its document
 | **Docker Desktop** | 8+ GB RAM allocated to Docker |
 | **JDK 21+** | Eclipse Temurin recommended |
 | **sbt** | 1.9+ |
-| **direnv** | Required by cn-quickstart |
-| **git** | For cloning upstream repos |
 | **curl** | For health polling |
 | **bash 4+** | Default on Linux; install via Homebrew on macOS |
-| ~20 GB disk | For Docker images on first run |
+| ~5 GB disk | For Docker images on first run |
 
 ### For compile + test only
 
@@ -69,20 +70,11 @@ sbt test
 
 This single command will:
 
-1. Clone/update `digital-asset/cn-quickstart`
-2. Start the local Canton network (Docker Compose)
-3. Wait for all validator endpoints to become healthy
-4. Run the Scala conformance harness
-5. Generate JSON + Markdown reports to `reports/latest/`
-6. Print a summary and exit 0 (pass) or nonzero (fail)
-
-> **First-time setup note**: If this is your first time running cn-quickstart, you may need to run its interactive setup first:
-> ```bash
-> cd .quickstart
-> make setup   # Interactive configuration wizard
-> make build
-> ```
-> Then re-run `./demo/run-live-demo.sh`.
+1. Start the Canton validator network (Docker Compose)
+2. Wait for all validator endpoints to become healthy
+3. Run the Scala conformance harness
+4. Generate JSON + Markdown reports to `reports/latest/`
+5. Print a summary and exit 0 (pass) or nonzero (fail)
 
 ### Run the harness directly (against an already-running environment)
 
@@ -95,12 +87,12 @@ sbt "run --scenario demo/scenarios/localnet-readiness.yaml --output reports/late
 | Phase | Time |
 |-------|------|
 | sbt compile (cold) | ~60s |
-| CN Quickstart start (first run, images pulling) | 5–15 min |
-| CN Quickstart start (warm) | 1–3 min |
+| Docker image pull (first run) | 3–8 min |
+| Canton network start (warm) | ~30s |
 | Readiness polling | 30s – 2 min |
 | Conformance harness execution | ~10s |
-| **Total (warm)** | **~3–5 min** |
-| **Total (cold, first run)** | **~15–20 min** |
+| **Total (warm)** | **~2–3 min** |
+| **Total (cold, first run)** | **~5–10 min** |
 
 ## Output
 
@@ -177,7 +169,7 @@ make integration
 make integration-harness
 ```
 
-The integration workflow supports testing against any cn-quickstart version via manual dispatch with a configurable `quickstart_ref` input — enabling version compatibility validation similar to Avalanche's binary-swap E2E tests.
+The integration workflow supports testing against any Canton version via manual dispatch with a configurable `canton_version` input — enabling version compatibility validation similar to Avalanche's binary-swap E2E tests.
 
 ### Conformance Attestation
 
@@ -222,6 +214,10 @@ Every invariant has counter-case tests that verify the harness correctly detects
 ├── .scalafmt.conf                     # Scalafmt configuration
 ├── Makefile                           # Build targets (ci, integration, fmt, test, assembly, etc.)
 ├── build.sbt                          # Scala/sbt project definition
+├── infra/
+│   ├── .env                           # Canton version pin and network config
+│   ├── compose.yaml                   # Minimal Docker Compose (postgres, canton, splice)
+│   └── conf/                          # Canton/Splice HOCON configs and health checks
 ├── project/
 │   ├── build.properties               # sbt version pin
 │   └── plugins.sbt                    # sbt-assembly + sbt-scalafmt plugins
