@@ -179,6 +179,23 @@ make integration-harness
 
 The integration workflow supports testing against any cn-quickstart version via manual dispatch with a configurable `quickstart_ref` input — enabling version compatibility validation similar to Avalanche's binary-swap E2E tests.
 
+### Conformance Attestation
+
+On successful Tier 2 runs, the workflow produces a **signed conformance attestation** (SLSA Build Level 2) using the [in-toto test-result predicate](https://github.com/in-toto/attestation/blob/main/spec/predicates/test-result.md) and GitHub's keyless Sigstore signing. Both the conformance report and the fat JAR are attested as subjects.
+
+- **No keys to manage** — ephemeral keys are minted per workflow run via GitHub OIDC and destroyed immediately
+- **Tamper-evident** — attestations are bound to the specific repo, workflow, commit, and run ID
+- **Publicly verifiable** — signing events are recorded in Sigstore's transparency log
+
+```bash
+# Verify a conformance report attestation
+gh attestation verify conformance-report.json \
+  --repo merged-one/canton-upgrade-conformance-kit-demo \
+  --predicate-type 'https://in-toto.io/attestation/test-result/v0.1'
+```
+
+See [docs/ci-strategy.md](docs/ci-strategy.md) for full details on the attestation approach and security properties.
+
 ## Testing
 
 ```bash
