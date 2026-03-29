@@ -56,7 +56,11 @@ jobs:
 
       - name: Start Canton network
         working-directory: .quickstart/quickstart
-        run: make start
+        run: |
+          # Skip the full source build (frontend/backend/daml) — we only need
+          # the Canton infrastructure containers which use pre-built Docker images.
+          # The -o flag tells Make to treat 'build' as already up-to-date.
+          make -o build start
 
       - name: Wait for validator readiness
         run: |
@@ -119,7 +123,8 @@ jobs:
         if: failure()
         working-directory: .quickstart/quickstart
         run: |
-          docker compose logs --tail=200 > ../../reports/docker-logs.txt 2>&1 || true
+          mkdir -p ../../reports
+          make logs > ../../reports/docker-logs.txt 2>&1 || true
 
       - name: Upload Docker logs on failure
         uses: actions/upload-artifact@v4
