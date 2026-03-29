@@ -51,7 +51,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y direnv
 
       - name: Start Canton network
-        working-directory: .quickstart
+        working-directory: .quickstart/quickstart
         run: make start
 
       - name: Wait for validator readiness
@@ -113,9 +113,9 @@ jobs:
 
       - name: Capture Docker logs on failure
         if: failure()
-        working-directory: .quickstart
+        working-directory: .quickstart/quickstart
         run: |
-          docker compose logs --tail=200 > ../reports/docker-logs.txt 2>&1 || true
+          docker compose logs --tail=200 > ../../reports/docker-logs.txt 2>&1 || true
 
       - name: Upload Docker logs on failure
         uses: actions/upload-artifact@v4
@@ -126,7 +126,7 @@ jobs:
 
       - name: Teardown Canton network
         if: always()
-        working-directory: .quickstart
+        working-directory: .quickstart/quickstart
         run: |
           make stop 2>/dev/null || true
           docker compose down -v 2>/dev/null || true
