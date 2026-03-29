@@ -20,6 +20,7 @@ jobs:
           distribution: temurin
           java-version: 17
           cache: sbt
+      - uses: sbt/setup-sbt@v1
       - run: make fmt-check
 
   compile:
@@ -32,6 +33,7 @@ jobs:
           distribution: temurin
           java-version: 17
           cache: sbt
+      - uses: sbt/setup-sbt@v1
       - run: make compile
 
   test:
@@ -45,6 +47,7 @@ jobs:
           distribution: temurin
           java-version: 17
           cache: sbt
+      - uses: sbt/setup-sbt@v1
       - run: make test
       - uses: actions/upload-artifact@v4
         if: always()
@@ -63,6 +66,7 @@ jobs:
           distribution: temurin
           java-version: 17
           cache: sbt
+      - uses: sbt/setup-sbt@v1
       - run: make assembly
       - uses: actions/upload-artifact@v4
         with:
