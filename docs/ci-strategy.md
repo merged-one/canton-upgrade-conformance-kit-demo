@@ -9,13 +9,13 @@ The Canton Conformance Kit uses a two-tier CI model that separates fast code-qua
 | Tier | Workflow | Triggers | Runtime | What it validates |
 |------|----------|----------|---------|-------------------|
 | **Tier 1: Code Quality** | `ci.yml` | Push to `main`, PRs | ~2 min | Formatting, compilation (warnings-as-errors), 23 unit tests, fat JAR assembly |
-| **Tier 2: Live Conformance** | `integration.yml` | Nightly, release tags (`v*`), manual dispatch | ~25 min | Canton network startup, validator readiness, 5 conformance invariants against live endpoints |
+| **Tier 2: Live Conformance** | `integration.yml` | Nightly, release tags (`v*`), manual dispatch | ~4 min | Canton network startup, validator readiness, 5 conformance invariants against live endpoints |
 
 ### Why two tiers?
 
 **Tier 1 on every PR** gives developers fast feedback (under 2 minutes) on whether their code compiles, tests pass, and the JAR builds. This is the inner development loop.
 
-**Tier 2 nightly + on releases** validates that the conformance kit works against a real Canton network. Running this on every PR would add 25+ minutes to the feedback loop and consume Docker resources unnecessarily. Nightly runs catch regressions from upstream Canton image changes. Release-tag runs serve as a gate before publishing.
+**Tier 2 nightly + on releases** validates that the conformance kit works against a real Canton network. Running this on every PR would add ~4 minutes to the feedback loop and consume Docker resources unnecessarily. Nightly runs catch regressions from upstream Canton image changes. Release-tag runs serve as a gate before publishing.
 
 **Manual dispatch** allows ad-hoc testing against any Canton image version — useful for testing against upcoming releases before upgrading.
 

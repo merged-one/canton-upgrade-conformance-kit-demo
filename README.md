@@ -50,7 +50,7 @@ Version is pinned in `infra/.env` and overridable via CI manual dispatch for ver
 
 | Requirement | Notes |
 |-------------|-------|
-| **JDK 21+** | Eclipse Temurin recommended |
+| **JDK 17+** | Eclipse Temurin recommended |
 | **sbt** | 1.9+ |
 
 ## Quick Start
@@ -154,7 +154,7 @@ The project uses a two-tier CI model following blockchain protocol best practice
 | Tier | What | When | Runtime | Local command |
 |------|------|------|---------|---------------|
 | **Tier 1: Code Quality** | Format, compile (warnings-as-errors), unit tests, assembly | Every PR and push to `main` | ~2 min | `make ci` |
-| **Tier 2: Live Conformance** | Spin up Canton network, run conformance harness, validate 5 invariants | Nightly, release tags, manual dispatch | ~25 min | `make integration` |
+| **Tier 2: Live Conformance** | Spin up Canton network, run conformance harness, validate 5 invariants | Nightly, release tags, manual dispatch | ~4 min | `make integration` |
 
 This mirrors how Ethereum (Hive), Cosmos (interchaintest), Avalanche (ANR), and Hyperledger Fabric separate fast code-quality CI from slower live-network conformance testing.
 
