@@ -16,7 +16,6 @@ on:
 
 env:
   JAVA_OPTS: -Xmx2g
-  CANTON_VERSION: ${{ github.event.inputs.canton_version || '0.5.3' }}
 
 permissions:
   id-token: write       # Sigstore keyless signing via GitHub OIDC
@@ -33,6 +32,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Resolve Canton version
+        run: |
+          if [ -n "${{ github.event.inputs.canton_version }}" ]; then
+            echo "CANTON_VERSION=${{ github.event.inputs.canton_version }}" >> "$GITHUB_ENV"
+          else
+            # Read default from infra/.env so scheduled/tag runs use the repo's pinned version
+            CANTON_VERSION=$(grep '^CANTON_VERSION=' infra/.env | cut -d= -f2)
+            echo "CANTON_VERSION=$CANTON_VERSION" >> "$GITHUB_ENV"
+          fi
+          echo "Using Canton version: $CANTON_VERSION"
+
       - name: Setup Java 21
         uses: actions/setup-java@v4
         with:
@@ -46,8 +56,7 @@ jobs:
       - name: Build conformance kit
         run: make assembly
 
-      - name: Override Canton version (if specified)
-        if: github.event.inputs.canton_version
+      - name: Apply Canton version to infra config
         run: sed -i "s/^CANTON_VERSION=.*/CANTON_VERSION=$CANTON_VERSION/" infra/.env
 
       - name: Start Canton network
