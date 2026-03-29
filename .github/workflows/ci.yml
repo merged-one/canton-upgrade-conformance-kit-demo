@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  JAVA_OPTS: -Xmx2g
+
+jobs:
+  format:
+    name: Format Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: sbt
+      - uses: sbt/setup-sbt@v1
+      - run: make fmt-check
+
+  compile:
+    name: Compile
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: sbt
+      - uses: sbt/setup-sbt@v1
+      - run: make compile
+
+  test:
+    name: Test
+    needs: [format, compile]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: sbt
+      - uses: sbt/setup-sbt@v1
+      - run: make test
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-reports
+          path: target/test-reports/
+
+  assembly:
+    name: Assembly
+    needs: [test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: sbt
+      - uses: sbt/setup-sbt@v1
+      - run: make assembly
+      - uses: actions/upload-artifact@v4
+        with:
+          name: canton-conformance-kit
+          path: target/scala-2.13/canton-conformance-kit.jar
+          retention-days: 14

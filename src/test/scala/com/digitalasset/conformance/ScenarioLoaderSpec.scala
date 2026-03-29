@@ -44,7 +44,7 @@ class ScenarioLoaderSpec extends AnyFlatSpec with Matchers {
 
   it should "parse endpoint properties correctly" in {
     val scenario = ScenarioLoader.loadFromString(validYaml).toOption.get
-    val ep = scenario.endpoints.head
+    val ep       = scenario.endpoints.head
     ep.name shouldBe "validator-1-readiness"
     ep.url shouldBe "http://localhost:2903/api/validator/readyz"
     ep.expectedStatus shouldBe 200
@@ -54,7 +54,7 @@ class ScenarioLoaderSpec extends AnyFlatSpec with Matchers {
 
   it should "parse invariant properties correctly" in {
     val scenario = ScenarioLoader.loadFromString(validYaml).toOption.get
-    val inv = scenario.invariants.head
+    val inv      = scenario.invariants.head
     inv.id shouldBe "INV-001"
     inv.description shouldBe "All required endpoints must be reachable"
     inv.check shouldBe "all_endpoints_reachable"

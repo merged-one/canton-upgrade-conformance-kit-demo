@@ -7,12 +7,12 @@ import java.nio.file.{Path, Paths}
 object Main {
 
   case class CliConfig(
-    scenario: Path = Paths.get("demo/scenarios/localnet-readiness.yaml"),
-    outputDir: Path = Paths.get("reports/latest"),
-    timeout: Int = 30,
-    retries: Int = 5,
-    retryDelay: Int = 3,
-    verbose: Boolean = false
+      scenario: Path = Paths.get("demo/scenarios/localnet-readiness.yaml"),
+      outputDir: Path = Paths.get("reports/latest"),
+      timeout: Int = 30,
+      retries: Int = 5,
+      retryDelay: Int = 3,
+      verbose: Boolean = false
   )
 
   private val builder = OParser.builder[CliConfig]
@@ -43,12 +43,11 @@ object Main {
     )
   }
 
-  def main(args: Array[String]): Unit = {
+  def main(args: Array[String]): Unit =
     OParser.parse(parser, args, CliConfig()) match {
       case Some(config) => run(config)
       case None         => System.exit(1)
     }
-  }
 
   private def run(config: CliConfig): Unit = {
     println("=" * 60)
@@ -106,8 +105,8 @@ object Main {
     println()
 
     // Summary
-    val allPassed = invariantResults.forall(_.passed)
-    val passCount = invariantResults.count(_.passed)
+    val allPassed  = invariantResults.forall(_.passed)
+    val passCount  = invariantResults.count(_.passed)
     val totalCount = invariantResults.size
     println("=" * 60)
     if (allPassed) {

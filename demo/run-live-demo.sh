@@ -26,10 +26,12 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-QUICKSTART_DIR="${PROJECT_ROOT}/.quickstart"
+QUICKSTART_CLONE_DIR="${PROJECT_ROOT}/.quickstart"
 QUICKSTART_REPO="https://github.com/digital-asset/cn-quickstart.git"
 # Pin to a known tag/branch for reproducibility; update as needed
 QUICKSTART_REF="main"
+# The Makefile lives in the quickstart/ subdirectory of the repo
+QUICKSTART_DIR="${QUICKSTART_CLONE_DIR}/quickstart"
 
 REPORT_DIR="${PROJECT_ROOT}/reports/latest"
 SCENARIO_FILE="${PROJECT_ROOT}/demo/scenarios/localnet-readiness.yaml"
@@ -44,13 +46,45 @@ READINESS_ENDPOINTS=(
 MAX_WAIT_SECONDS=300
 POLL_INTERVAL=10
 
+# ─── Java Detection ──────────────────────────────────────────────────────────
+
+# Ensure JAVA_HOME is set — cn-quickstart's gradlew requires it.
+# sbt finds Java via its own launcher, but gradlew needs JAVA_HOME on PATH.
+if [ -z "${JAVA_HOME:-}" ]; then
+  if command -v /usr/libexec/java_home >/dev/null 2>&1; then
+    export JAVA_HOME="$(/usr/libexec/java_home 2>/dev/null || true)"
+  fi
+  # Fallback: check Homebrew OpenJDK locations (macOS)
+  if [ -z "${JAVA_HOME:-}" ]; then
+    for jdk in /opt/homebrew/opt/openjdk@21 /opt/homebrew/opt/openjdk@17 /opt/homebrew/opt/openjdk; do
+      if [ -d "$jdk/libexec/openjdk.jdk/Contents/Home" ]; then
+        export JAVA_HOME="$jdk/libexec/openjdk.jdk/Contents/Home"
+        break
+      fi
+    done
+  fi
+  if [ -n "${JAVA_HOME:-}" ]; then
+    export PATH="$JAVA_HOME/bin:$PATH"
+  fi
+fi
+
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-CYAN='\033[0;36m'
-NC='\033[0m'
+# Disable color output in CI environments or when NO_COLOR is set
+# See https://no-color.org/
+if [[ -n "${NO_COLOR:-}" ]] || [[ -n "${CI:-}" ]]; then
+  RED=''
+  GREEN=''
+  YELLOW=''
+  CYAN=''
+  NC=''
+else
+  RED='\033[0;31m'
+  GREEN='\033[0;32m'
+  YELLOW='\033[1;33m'
+  CYAN='\033[0;36m'
+  NC='\033[0m'
+fi
 
 log()   { echo -e "${CYAN}[conformance]${NC} $*"; }
 warn()  { echo -e "${YELLOW}[conformance]${NC} $*"; }
@@ -84,17 +118,21 @@ check_prereqs() {
 setup_quickstart() {
   log "Setting up CN Quickstart reference environment..."
 
-  if [ -d "$QUICKSTART_DIR/.git" ]; then
-    log "Quickstart repo already cloned at $QUICKSTART_DIR"
+  if [ -d "$QUICKSTART_CLONE_DIR/.git" ]; then
+    log "Quickstart repo already cloned at $QUICKSTART_CLONE_DIR"
     log "Updating to ref: $QUICKSTART_REF"
-    (cd "$QUICKSTART_DIR" && git fetch origin && git checkout "$QUICKSTART_REF" && git pull origin "$QUICKSTART_REF" 2>/dev/null || true)
+    (cd "$QUICKSTART_CLONE_DIR" && git fetch origin && git checkout "$QUICKSTART_REF" && git pull origin "$QUICKSTART_REF" 2>/dev/null || true)
   else
     log "Cloning cn-quickstart ($QUICKSTART_REF)..."
-    git clone --depth 1 --branch "$QUICKSTART_REF" "$QUICKSTART_REPO" "$QUICKSTART_DIR"
+    git clone --depth 1 --branch "$QUICKSTART_REF" "$QUICKSTART_REPO" "$QUICKSTART_CLONE_DIR"
   fi
 
-  ok "Quickstart repo ready at $QUICKSTART_DIR"
-  log "  Commit: $(cd "$QUICKSTART_DIR" && git rev-parse --short HEAD)"
+  if [ ! -d "$QUICKSTART_DIR" ]; then
+    die "Expected quickstart/ subdirectory not found at $QUICKSTART_DIR. The cn-quickstart repo structure may have changed."
+  fi
+
+  ok "Quickstart repo ready at $QUICKSTART_CLONE_DIR"
+  log "  Commit: $(cd "$QUICKSTART_CLONE_DIR" && git rev-parse --short HEAD)"
 }
 
 # ─── Step 2: Start the Environment ──────────────────────────────────────────
@@ -127,6 +165,14 @@ start_environment() {
   # Attempt to start — this assumes 'make setup' has been run at least once.
   # The Quickstart Makefile orchestrates Docker Compose under the hood.
   if [ -f Makefile ]; then
+    # If .env.local doesn't exist and we're in CI (or non-interactive), create it
+    # using the quickstart's built-in CI configuration target.
+    if [ ! -f .env.local ]; then
+      if [[ -n "${CI:-}" ]] || [[ ! -t 0 ]]; then
+        log "No .env.local found — generating CI configuration..."
+        CI=true make ci-create-env-local
+      fi
+    fi
     log "Running 'make start' in Quickstart directory..."
     make start || {
       err "Failed to start environment."
@@ -235,8 +281,8 @@ print_summary() {
   echo ""
   echo "  Upstream repo: $QUICKSTART_REPO"
   echo "  Upstream ref:  $QUICKSTART_REF"
-  if [ -d "$QUICKSTART_DIR/.git" ]; then
-    echo "  Upstream commit: $(cd "$QUICKSTART_DIR" && git rev-parse --short HEAD)"
+  if [ -d "$QUICKSTART_CLONE_DIR/.git" ]; then
+    echo "  Upstream commit: $(cd "$QUICKSTART_CLONE_DIR" && git rev-parse --short HEAD)"
   fi
   echo ""
 
